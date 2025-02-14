@@ -42,7 +42,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_SOURCE_DIR}/3rdparty)
 
 file(GLOB SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.cpp")
-set(3RDPARTY matplotlib_cpp fmt::fmt spdlog::spdlog yaml-cpp::yaml-cpp)
+set(3RDPARTY matplotlib_cpp fmt::fmt spdlog::spdlog yaml-cpp)
 
 add_executable(motion_planning ${SOURCE_FILES})
 target_link_libraries(motion_planning ${3RDPARTY})
