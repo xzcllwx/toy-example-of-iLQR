@@ -23,15 +23,16 @@ lqr:
 
 iteration:
   max_iter: 100
-  init_lamb: 20
-  lamb_decay: 0.7
+  init_lamb: 0
+  lamb_decay: 0.5
   lamb_amplify: 2.0
-  max_lamb: 100000.0
-  tol: 0.00001
+  max_lamb: 1000.0
+  convergence_threshold: 0.01
+  accept_step_threshold: 0.5
 
 vehicle:
   target_velocity: 8
-  wheelbase: 3.6
+  wheelbase: 2.8
   width: 2
   length: 4.5
   velo_max: 10.0
@@ -40,7 +41,7 @@ vehicle:
   acc_max: 3.0
   acc_min: -3.0
   stl_lim: 0.2
-  d_safe: 1.5
+  d_safe: 0.8
 
 laneline:
   reference:
@@ -59,3 +60,4 @@ initial_condition:
 visualization:
   y_lim: [-3, 23]
   show_reference_line: false
+  show_obstacle_boundary: false
