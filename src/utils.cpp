@@ -21,7 +21,7 @@ namespace plt = matplotlibcpp;
 ReferenceLine::ReferenceLine(std::vector<double> _x, std::vector<double> _y, double width /* = 0*/,
                              double accuracy /* = 0.1*/)
     : delta_s(accuracy), delta_d(width) {
-    spline = CubicSpline2D(_x, _y);
+    spline = CubicSpline2D(_x, _y); // 形成两条三次样条曲线，用于对s的插值平滑
     for (double s = 0.0; s <= spline.s.back(); s += delta_s) {
         Eigen::Vector2d pos = spline.calc_position(s);
         double lyaw = spline.calc_yaw(s);

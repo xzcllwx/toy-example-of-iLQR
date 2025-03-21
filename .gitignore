@@ -1,6 +1,12 @@
 .vscode
 build
 
+pybind11/
+
+yaml/
+
+CMakeFiles/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

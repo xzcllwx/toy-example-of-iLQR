@@ -34,7 +34,10 @@ endif()
 
 find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
-find_package(yaml-cpp REQUIRED)
+# find_package(yaml-cpp REQUIRED)
+
+add_subdirectory(pybind11)
+add_subdirectory(yaml)
 
 include_directories("/usr/include/eigen3")
 include_directories(${CMAKE_CURRENT_LIST_DIR})
@@ -44,5 +47,8 @@ include_directories(${PROJECT_SOURCE_DIR}/3rdparty)
 file(GLOB SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.cpp")
 set(3RDPARTY matplotlib_cpp fmt::fmt spdlog::spdlog yaml-cpp)
 
-add_executable(motion_planning ${SOURCE_FILES})
-target_link_libraries(motion_planning ${3RDPARTY})
+pybind11_add_module(motion_planning ${SOURCE_FILES})
+# set_target_properties(example PROPERTIES SUFFIX ".so")
+# target_link_libraries(ilqr_diffdrive PRIVATE single_obs_diffdrive)
+# add_executable(motion_planning ${SOURCE_FILES})
+target_link_libraries(motion_planning PRIVATE ${3RDPARTY})

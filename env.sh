@@ -1,0 +1,1 @@
+sudo apt-get install fmt.dev libspdlog-dev libyaml-cpp-dev  python3-tk tk-dev -y
