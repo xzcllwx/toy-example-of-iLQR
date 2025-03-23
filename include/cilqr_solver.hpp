@@ -38,10 +38,13 @@ class CILQRSolver {
                                                          const ReferenceLine& ref_waypoints,
                                                          double ref_velo,
                                                          const std::vector<RoutingLine>& obs_preds,
-                                                         const Eigen::Vector2d& road_boaders);
+                                                         const Eigen::Vector2d& road_boaders,
+                                                         std::vector<std::vector<double>> init_trajectory);
 
   private:
     std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> get_init_traj(const Eigen::Vector4d& x0);
+    std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> get_init_traj(
+        const std::vector<std::vector<double>>& init_trajectory);
     std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> get_init_traj_increment(
         const Eigen::Vector4d& x0);
     Eigen::MatrixX4d const_velo_prediction(const Eigen::Vector4d& x0, size_t steps, double dt,

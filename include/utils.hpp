@@ -55,6 +55,12 @@ class RoutingLine {
     RoutingLine() {}
     RoutingLine(std::vector<double> _x, std::vector<double> _y, std::vector<double> _yaw)
         : x(_x), y(_y), yaw(_yaw) {}
+    RoutingLine(std::vector<std::vector<double>>& prediction): 
+            x(prediction[0]), y(prediction[1]), yaw(prediction[2]) {
+        assert(x.size() == y.size() && y.size() == yaw.size() && "x, y, and yaw must have the same length");
+        size = x.size();
+    }
+
     ~RoutingLine() {}
 
     RoutingLine subset(size_t start, size_t length);
@@ -264,6 +270,13 @@ void plot_obstacle_boundary(const Eigen::Vector4d& ego_state,
 Eigen::Vector4d kinematic_propagate(const Eigen::Vector4d& cur_x, const Eigen::Vector2d& cur_u,
                                     double dt, double wheelbase,
                                     ReferencePoint ref_point = ReferencePoint::GravityCenter);
+Eigen::Vector2d reverse_kinematic_propagate(
+                                    const Eigen::Vector4d& cur_x, 
+                                    const Eigen::Vector2d& prev_u, 
+                                    double dt, double wheelbase,
+                                    const Eigen::Vector4d& next_x,
+                                    ReferencePoint ref_point = ReferencePoint::GravityCenter);
+
 std::tuple<Eigen::MatrixX4d, Eigen::MatrixX2d> get_kinematic_model_derivatives(
     const Eigen::MatrixX4d& x, const Eigen::MatrixX2d& u, double dt, double wheelbase,
     uint32_t steps, ReferencePoint ref_point = ReferencePoint::GravityCenter);

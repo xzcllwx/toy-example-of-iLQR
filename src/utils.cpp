@@ -37,6 +37,7 @@ ReferenceLine::ReferenceLine(std::vector<double> _x, std::vector<double> _y, dou
 RoutingLine RoutingLine::subset(size_t start, size_t length) {
     size = std::min(x.size(), std::min(y.size(), yaw.size()));
     if (start >= size || (start + length) > size || length <= 0) {
+        SPDLOG_ERROR("Index out of range");
         throw std::out_of_range("RoutingLine::subset args is out of range.");
     }
 
@@ -51,6 +52,7 @@ RoutingLine RoutingLine::subset(size_t start, size_t length) {
 
 Eigen::Vector3d RoutingLine::operator[](size_t index) const {
     if (index >= x.size() || index >= y.size() || index >= yaw.size()) {
+        SPDLOG_ERROR("Index out of range");
         throw std::out_of_range("Index out of range");
     }
 
@@ -259,10 +261,27 @@ void imshow(const Outlook& out, const std::vector<double>& state, const std::vec
     }
 }
 
+double add_angles(double angle1, double angle2) {
+    double x1 = cos(angle1), y1 = sin(angle1);
+    double x2 = cos(angle2), y2 = sin(angle2);
+    double result_x = x1 + x2;
+    double result_y = y1 + y2;
+    return atan2(result_y, result_x);
+}
+
+double subtract_angles(double angle1, double angle2) {
+    double x1 = cos(angle1), y1 = sin(angle1);
+    double x2 = cos(angle2), y2 = sin(angle2);
+    double result_x = x1 - x2;
+    double result_y = y1 - y2;
+    return atan2(result_y, result_x);
+}
+
 Eigen::Vector4d kinematic_propagate(
     const Eigen::Vector4d& cur_x, const Eigen::Vector2d& cur_u, double dt, double wheelbase,
     ReferencePoint ref_point /* = ReferencePoint::GravityCenter */) {
-    double beta = atan(tan(cur_u[1] / 2));
+    double beta = atan(tan(cur_u[1])/2.0);
+    double sum_angle = add_angles(cur_x[3], beta);
     Eigen::Vector4d next_x;
 
     // clang-format off
@@ -272,14 +291,36 @@ Eigen::Vector4d kinematic_propagate(
                   cur_x[2] + cur_u[0] * dt,
                   cur_x[3] + cur_x[2] * tan(cur_u[1]) * dt / wheelbase;
     } else {
-        next_x << cur_x[0] + cur_x[2] * cos(beta + cur_x[3]) * dt,
-                  cur_x[1] + cur_x[2] * sin(beta + cur_x[3]) * dt,
+        next_x << cur_x[0] + cur_x[2] * cos(sum_angle) * dt,
+                  cur_x[1] + cur_x[2] * sin(sum_angle) * dt,
                   cur_x[2] + cur_u[0] * dt,
-                  cur_x[3] + 2 * cur_x[2] * sin(beta) * dt / wheelbase;
+                  cur_x[3] + cur_x[2] * cos(beta) * dt / wheelbase;
     }
     // clang-format on
 
     return next_x;
+}
+
+Eigen::Vector2d reverse_kinematic_propagate(
+    const Eigen::Vector4d& cur_x, 
+    const Eigen::Vector2d& prev_u, 
+    double dt, double wheelbase,
+    const Eigen::Vector4d& next_x,
+    ReferencePoint ref_point /* = ReferencePoint::GravityCenter */) {
+    double beta = atan(tan(prev_u[1])/2.0);
+    Eigen::Vector2d cur_u;
+    double diff_angle = subtract_angles(next_x[3], cur_x[3]);
+    // clang-format off
+    if (ref_point == ReferencePoint::RearCenter) {
+        cur_u << (next_x[2] - cur_x[2]) / dt,
+                  (diff_angle) * wheelbase / (cur_x[2] * dt);
+    } else {
+        cur_u << (next_x[2] - cur_x[2]) / dt,
+                  (diff_angle) * wheelbase / (cur_x[2] * dt * cos(beta));
+    }
+    // clang-format on
+
+    return cur_u;
 }
 
 std::tuple<Eigen::MatrixX4d, Eigen::MatrixX2d> get_kinematic_model_derivatives(

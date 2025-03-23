@@ -84,7 +84,16 @@ CILQRSolver::CILQRSolver(const GlobalConfig* const config) : is_first_solve(true
 
 std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::solve(
     const Eigen::Vector4d& x0, const ReferenceLine& ref_waypoints, double ref_velo,
-    const std::vector<RoutingLine>& obs_preds, const Eigen::Vector2d& road_boaders) {
+    const std::vector<RoutingLine>& obs_preds, const Eigen::Vector2d& road_boaders,
+    std::vector<std::vector<double>> init_trajectory) {
+    printf("x0 size: %d, %d\n", x0.rows(), x0.cols());
+    printf("ref_waypoints size: %d\n", ref_waypoints.x.size());
+    printf("obs_preds size: %d\n", obs_preds[0].x.size());
+    printf("road_boaders size: %d, %d\n", road_boaders.rows(), road_boaders.cols());
+    if(obs_preds.size() > 0 && obs_preds[0].x.size() < N) {
+        SPDLOG_ERROR("The prediction time step is not equal to the planning time step!");
+    }
+
     if (solve_type == SolveType::ALM &&
         (!use_last_solution || (use_last_solution && is_first_solve))) {
         alm_rho = alm_rho_init;
@@ -94,12 +103,18 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::solve(
     current_solve_status = LQRSolveStatus::RUNNING;
     Eigen::MatrixX2d u;
     Eigen::MatrixX4d x;
-    if (!is_first_solve && use_last_solution) {
-        std::tie(u, x) = get_init_traj_increment(x0);
-    } else {
-        std::tie(u, x) = get_init_traj(x0);
-        is_first_solve = false;
-    }
+    // if (!is_first_solve && use_last_solution) {
+    //     std::tie(u, x) = get_init_traj_increment(x0);
+    // } else {
+    //     std::tie(u, x) = get_init_traj(x0);
+    //     is_first_solve = false;
+    // }
+
+    std::tie(u, x) = get_init_traj(init_trajectory);
+    printf("u size: %d, %d\n", u.rows(), u.cols());
+    printf("x size: %d, %d\n", x.rows(), x.cols());
+
+    is_first_solve = false;
 
     double J = get_total_cost(u, x, ref_waypoints, ref_velo, obs_preds, road_boaders);
     double lamb = init_lamb;
@@ -118,10 +133,10 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::solve(
         if (current_solve_status == LQRSolveStatus::BACKWARD_PASS_FAIL ||
             current_solve_status == LQRSolveStatus::FORWARD_PASS_FAIL) {
             lamb = std::max(lamb_amplify, lamb * lamb_amplify);
-            // SPDLOG_DEBUG("iter {}, increase mu to {}", itr, lamb);
+            SPDLOG_DEBUG("iter {}, increase mu to {}", itr, lamb);
         } else if (current_solve_status == LQRSolveStatus::RUNNING) {
             lamb *= lamb_decay;
-            // SPDLOG_DEBUG("iter {}, decrease mu to {}", itr, lamb);
+            SPDLOG_DEBUG("iter {}, decrease mu to {}", itr, lamb);
         }
 
         if (lamb > max_lamb) {
@@ -157,6 +172,24 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::get_init_traj(
     Eigen::MatrixX2d init_u = Eigen::MatrixX2d::Zero(N, 2);
     Eigen::MatrixX4d init_x = const_velo_prediction(x0, N, dt, wheelbase);
 
+    return std::make_tuple(init_u, init_x);
+}
+
+std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::get_init_traj(
+    const std::vector<std::vector<double>>& init_trajectory) {
+    Eigen::MatrixX2d init_u = Eigen::MatrixX2d::Zero(N, 2);
+    Eigen::MatrixX4d init_x = Eigen::MatrixX4d::Zero(N + 1, 4);
+    for (size_t i = 0; i < N + 1; ++i) {
+        init_x.row(i) << init_trajectory[i][0], init_trajectory[i][1], init_trajectory[i][2],
+            init_trajectory[i][3];
+    }
+    Eigen::Vector2d prev_u = Eigen::Vector2d::Zero();
+    for (size_t i = 0; i < N; ++i) {
+        Eigen::Vector2d cur_u = utils::reverse_kinematic_propagate(
+            init_x.row(i), prev_u, dt, wheelbase, init_x.row(i + 1), reference_point);
+        prev_u = cur_u;
+        init_u.row(i) = cur_u;
+    }
     return std::make_tuple(init_u, init_x);
 }
 
@@ -407,7 +440,7 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d, Eigen::Vector2d> CILQRSolver::bac
         Eigen::Matrix2d Q_uu =
             l_uu.block(nu * i, 0, nu, nu) +
             df_du.block(nx * i, 0, nx, nu).transpose() * V_xx * df_du.block(nx * i, 0, nx, nu) +
-            lamb * Eigen::Matrix4d::Identity();
+            lamb * Eigen::Matrix2d::Identity();
         Eigen::Matrix<double, 2, 4> Q_ux =
             l_ux.block(nu * i, 0, nu, nx) +
             df_du.block(nx * i, 0, nx, nu).transpose() * V_xx * df_dx.block(nx * i, 0, nx, nx);

@@ -2,7 +2,7 @@ max_simulation_time: 15
 delta_t: 0.1
 
 lqr:
-  N: 30
+  N: 79
   nx: 4
   nu: 2
   w_pos: 1.0
@@ -11,7 +11,8 @@ lqr:
   w_acc: 0.5
   w_stl: 50.0
   # Solving CILQR using the augmented lagrangian method or the barrier function
-  slove_type: "barrier" # or "alm"
+  # slove_type: "barrier" # or "alm"
+  slove_type: "barrier"
   alm_rho_init: 20
   alm_gamma: 0
   max_rho: 20
@@ -33,6 +34,7 @@ iteration:
   accept_step_threshold: 0.5
 
 vehicle:
+  # reference_point: "gravity_center" # rear_center or gravity_center
   reference_point: "gravity_center" # rear_center or gravity_center
   target_velocity: 8
   wheelbase: 2.8

@@ -1,6 +1,12 @@
 .vscode
 build
 
+build/
+
+spdlog/
+
+fmt/
+
 pybind11/
 
 yaml/
