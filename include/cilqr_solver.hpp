@@ -97,6 +97,7 @@ class CILQRSolver {
     uint32_t nu;
     Eigen::Matrix4d state_weight;
     Eigen::Matrix2d ctrl_weight;
+    double jerk_weight;
     double obstacle_exp_q1;
     double obstacle_exp_q2;
     double state_exp_q1;

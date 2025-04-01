@@ -13,6 +13,8 @@
 
 #include <Eigen/Dense>
 #include <limits>
+#include "matplotlibcpp.h"
+namespace plt = matplotlibcpp;
 
 CILQRSolver::CILQRSolver(const GlobalConfig* const config) : is_first_solve(true) {
     dt = config->get_config<double>("delta_t");
@@ -28,7 +30,8 @@ CILQRSolver::CILQRSolver(const GlobalConfig* const config) : is_first_solve(true
     ctrl_weight = Eigen::Matrix2d::Zero();
     ctrl_weight(0, 0) = config->get_config<double>("lqr/w_acc");
     ctrl_weight(1, 1) = config->get_config<double>("lqr/w_stl");
-
+    jerk_weight = config->get_config<double>("lqr/w_jerk");
+    
     use_last_solution = config->get_config<bool>("lqr/use_last_solution");
     std::string solve_type_str = config->get_config<std::string>("lqr/slove_type");
     if (solve_type_str == "alm") {
@@ -80,16 +83,19 @@ CILQRSolver::CILQRSolver(const GlobalConfig* const config) : is_first_solve(true
     l_ux.setZero(N * nu, nx);
 
     last_solve_J = std::numeric_limits<double>::max();
+
+    last_solve_u = Eigen::MatrixX2d::Zero(N, nu);
+    last_solve_x = Eigen::MatrixX4d::Zero(N + 1, nx);
 }
 
 std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::solve(
     const Eigen::Vector4d& x0, const ReferenceLine& ref_waypoints, double ref_velo,
     const std::vector<RoutingLine>& obs_preds, const Eigen::Vector2d& road_boaders,
     std::vector<std::vector<double>> init_trajectory) {
-    printf("x0 size: %d, %d\n", x0.rows(), x0.cols());
-    printf("ref_waypoints size: %d\n", ref_waypoints.x.size());
-    printf("obs_preds size: %d\n", obs_preds[0].x.size());
-    printf("road_boaders size: %d, %d\n", road_boaders.rows(), road_boaders.cols());
+    // printf("x0 size: %d, %d\n", x0.rows(), x0.cols());
+    // printf("ref_waypoints size: %d\n", ref_waypoints.x.size());
+    // printf("obs_preds size: %d\n", obs_preds[0].x.size());
+    // printf("road_boaders size: %d, %d\n", road_boaders.rows(), road_boaders.cols());
     if(obs_preds.size() > 0 && obs_preds[0].x.size() < N) {
         SPDLOG_ERROR("The prediction time step is not equal to the planning time step!");
     }
@@ -111,10 +117,49 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::solve(
     // }
 
     std::tie(u, x) = get_init_traj(init_trajectory);
-    printf("u size: %d, %d\n", u.rows(), u.cols());
-    printf("x size: %d, %d\n", x.rows(), x.cols());
-
     is_first_solve = false;
+    // printf("u size: %d, %d\n", u.rows(), u.cols());
+    // printf("x size: %d, %d\n", x.rows(), x.cols());
+
+    // {
+    //     plt::cla();
+    //     {
+    //         std::vector<double> traj_x;
+    //         std::vector<double> traj_y;
+    //         traj_x.reserve(init_trajectory.size());
+    //         traj_y.reserve(init_trajectory.size());
+    //         for (size_t i = 0; i < init_trajectory.size(); ++i) {
+    //             traj_x.emplace_back(init_trajectory[i][0]);
+    //             traj_y.emplace_back(init_trajectory[i][1]);
+    //         }
+    //         plt::scatter(traj_x, traj_y, 50.0, {{"color", "blue"}, {"marker", "o"}});
+    //     }
+    //     Eigen::MatrixX4d correspond_x = Eigen::MatrixX4d::Zero(N + 1, 4);
+    //     Eigen::Vector4d cur_x = x0;
+    //     correspond_x.row(0) = cur_x;
+    //     for (size_t i = 0; i < N; ++i) {
+    //         Eigen::Vector2d cur_u = u.row(i).transpose();
+    //         // SPDLOG_INFO("cur_u: {}, {}", cur_u[0], cur_u[1]);
+    //         Eigen::Vector4d next_x = utils::kinematic_propagate(cur_x, cur_u, dt,
+    //                                                             wheelbase, reference_point);
+    //         cur_x = next_x;
+    //         correspond_x.row(i + 1) = next_x;
+    //     }
+    
+    //     {
+    //         std::vector<double> traj_x;
+    //         std::vector<double> traj_y;
+    //         traj_x.reserve(correspond_x.rows());
+    //         traj_y.reserve(correspond_x.rows());
+    //         for (int i = 0; i < correspond_x.rows(); ++i) {
+    //             traj_x.emplace_back(correspond_x(i, 0));
+    //             traj_y.emplace_back(correspond_x(i, 1));
+    //         }
+    //         plt::scatter(traj_x, traj_y, 50.0, {{"color", "red"}, {"marker", "o"}});
+    //     }
+    //     plt::pause(0.1);
+    //     plt::show();
+    // }
 
     double J = get_total_cost(u, x, ref_waypoints, ref_velo, obs_preds, road_boaders);
     double lamb = init_lamb;
@@ -133,10 +178,10 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::solve(
         if (current_solve_status == LQRSolveStatus::BACKWARD_PASS_FAIL ||
             current_solve_status == LQRSolveStatus::FORWARD_PASS_FAIL) {
             lamb = std::max(lamb_amplify, lamb * lamb_amplify);
-            SPDLOG_DEBUG("iter {}, increase mu to {}", itr, lamb);
+            // SPDLOG_WARN("iter {}, increase mu to {}", itr, lamb);
         } else if (current_solve_status == LQRSolveStatus::RUNNING) {
             lamb *= lamb_decay;
-            SPDLOG_DEBUG("iter {}, decrease mu to {}", itr, lamb);
+            // SPDLOG_DEBUG("iter {}, decrease mu to {}", itr, lamb);
         }
 
         if (lamb > max_lamb) {
@@ -161,8 +206,9 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::solve(
     if (is_exceed_max_itr) {
         SPDLOG_WARN("Iteration reached the maximum {}. Final cost: {:.3f}", max_iter, J);
     }
+    SPDLOG_DEBUG("Sovle Status {}", static_cast<int>(current_solve_status));
     double solve_cost_time = solve_time.toc() * 1000;
-    // SPDLOG_DEBUG("solve cost time {:.2f} ms", solve_cost_time);
+    SPDLOG_DEBUG("solve cost time {:.2f} ms", solve_cost_time);
 
     return std::make_tuple(u, x);
 }
@@ -183,7 +229,7 @@ std::tuple<Eigen::MatrixX2d, Eigen::MatrixX4d> CILQRSolver::get_init_traj(
         init_x.row(i) << init_trajectory[i][0], init_trajectory[i][1], init_trajectory[i][2],
             init_trajectory[i][3];
     }
-    Eigen::Vector2d prev_u = Eigen::Vector2d::Zero();
+    Eigen::Vector2d prev_u = last_solve_u.row(0);
     for (size_t i = 0; i < N; ++i) {
         Eigen::Vector2d cur_u = utils::reverse_kinematic_propagate(
             init_x.row(i), prev_u, dt, wheelbase, init_x.row(i + 1), reference_point);
@@ -314,7 +360,14 @@ double CILQRSolver::get_total_cost(const Eigen::MatrixX2d& u, const Eigen::Matri
         }
         J_barrier += J_barrier_k;
     }
-    double J_total = J_prime + J_barrier;
+
+    double J_jerk = 0.0;
+    for (size_t k = 1; k < N; ++k) {
+        double jerk = (u(k, 0) - u(k-1, 0)) / dt;  // 加速度变化率
+        J_jerk += jerk_weight * jerk * jerk;       // 二次型代价
+    }
+
+    double J_total = J_prime + J_barrier + J_jerk;
 
     return J_total;
 }
@@ -526,6 +579,25 @@ void CILQRSolver::get_total_cost_derivatives_and_Hessians(const Eigen::MatrixX2d
     Eigen::MatrixX4d l_x_prime = 2 * (x - ref_states) * state_weight;
     Eigen::MatrixX4d l_xx_prime = (2 * state_weight).replicate(N + 1, 1);
 
+    Eigen::MatrixX2d l_u_jerk = Eigen::MatrixX2d::Zero(N, nu);
+    Eigen::MatrixX2d l_uu_jerk = Eigen::MatrixX2d::Zero(N * nu, nu);
+    // 计算jerk相关的导数
+    for (size_t k = 1; k < N; ++k) {
+        // 当前时刻jerk对当前控制的导数: 1/dt
+        l_u_jerk(k, 0) += 2.0 * jerk_weight * (u(k, 0) - u(k-1, 0)) / (dt * dt);
+        
+        // 当前时刻jerk对上一时刻控制的导数: -1/dt
+        l_u_jerk(k-1, 0) += 2.0 * jerk_weight * (u(k-1, 0) - u(k, 0)) / (dt * dt);
+        
+        // 二阶导数
+        l_uu_jerk(nu * k + 0, 0) += 2.0 * jerk_weight / (dt * dt);     // ∂²/∂u(k)²
+        l_uu_jerk(nu * (k-1) + 0, 0) += 2.0 * jerk_weight / (dt * dt); // ∂²/∂u(k-1)²
+        
+        // 交叉项 (需要特殊处理)
+        // 注意：这里需要更新l_xu和l_ux矩阵，但原代码中这些矩阵被注释掉了
+        // 如果启用这些矩阵，应添加相应代码
+    }
+
     // part 2: cost derivatives due to the barrier terms
     Eigen::MatrixX2d l_u_barrier = Eigen::MatrixX2d::Zero(N, nu);
     Eigen::MatrixX2d l_uu_barrier = Eigen::MatrixX2d::Zero(N * nu, nu);
@@ -716,8 +788,8 @@ void CILQRSolver::get_total_cost_derivatives_and_Hessians(const Eigen::MatrixX2d
         }
     }
 
-    l_u = l_u_prime + l_u_barrier;
-    l_uu = l_uu_prime + l_uu_barrier;
+    l_u = l_u_prime + l_u_barrier + l_u_jerk;;
+    l_uu = l_uu_prime + l_uu_barrier + l_uu_jerk;
     l_x = l_x_prime + l_x_barrier;
     l_xx = l_xx_prime + l_xx_barrier;
 }

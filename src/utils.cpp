@@ -34,6 +34,29 @@ ReferenceLine::ReferenceLine(std::vector<double> _x, std::vector<double> _y, dou
     }
 }
 
+
+ReferenceLine::ReferenceLine(
+        std::vector<double> _x, std::vector<double> _y, 
+        double offset_x, double offset_y,
+        double width, double accuracy /* = 0.1*/)
+        : delta_s(accuracy), delta_d(width) {
+    for (size_t i = 0; i < _x.size(); ++i) {
+        _x[i] += offset_x;
+        _y[i] += offset_y;
+    }
+    spline = CubicSpline2D(_x, _y); // 形成两条三次样条曲线，用于对s的插值平滑
+    for (double s = 0.0; s <= spline.s.back(); s += delta_s) {
+        Eigen::Vector2d pos = spline.calc_position(s);
+        double lyaw = spline.calc_yaw(s);
+        double lx = pos.x() - width * sin(lyaw);
+        double ly = pos.y() + width * cos(lyaw);
+        x.emplace_back(lx);
+        y.emplace_back(ly);
+        yaw.emplace_back(lyaw);
+        longitude.emplace_back(s);
+    }
+}
+
 RoutingLine RoutingLine::subset(size_t start, size_t length) {
     size = std::min(x.size(), std::min(y.size(), yaw.size()));
     if (start >= size || (start + length) > size || length <= 0) {
@@ -106,11 +129,11 @@ std::vector<RoutingLine> get_sub_routing_lines(const std::vector<RoutingLine>& r
 
 Eigen::Matrix3Xd get_cur_obstacle_states(const std::vector<RoutingLine>& routing_lines,
                                          int time_index) {
-    int obstalce_num = routing_lines.size() - 1;
+    int obstalce_num = routing_lines.size();
     Eigen::Matrix3Xd cur_obstacle_states = Eigen::Matrix3Xd::Zero(3, obstalce_num);
 
-    for (int idx = 1; idx < routing_lines.size(); ++idx) {
-        cur_obstacle_states.col(idx - 1) = routing_lines[idx][time_index];
+    for (int idx = 0; idx < routing_lines.size(); ++idx) {
+        cur_obstacle_states.col(idx) = routing_lines[idx][time_index];
     }
 
     return cur_obstacle_states;
@@ -191,7 +214,6 @@ void plot_obstacle_boundary(const Eigen::Vector4d& ego_state,
         sample_y.unaryExpr([ego_rear](double x) { return x + ego_rear[1]; });
     plt::plot(front_circle_x, front_circle_y, {{"color", "red"}, {"zorder", "12"}});
     plt::plot(rear_circle_x, rear_circle_y, {{"color", "red"}, {"zorder", "12"}});
-
     int obstacle_num = obstacles_info.cols();
     for (size_t idx = 0; idx < obstacle_num; ++idx) {
         Eigen::Vector3d cur_state = obstacles_info.col(idx);
@@ -262,19 +284,29 @@ void imshow(const Outlook& out, const std::vector<double>& state, const std::vec
 }
 
 double add_angles(double angle1, double angle2) {
-    double x1 = cos(angle1), y1 = sin(angle1);
-    double x2 = cos(angle2), y2 = sin(angle2);
-    double result_x = x1 + x2;
-    double result_y = y1 + y2;
-    return atan2(result_y, result_x);
+    // Convert angles to unit vectors
+    double x1 = std::cos(angle1), y1 = std::sin(angle1);
+    double x2 = std::cos(angle2), y2 = std::sin(angle2);
+
+    // Apply rotation
+    double x_new = x1 * x2 - y1 * y2;
+    double y_new = x1 * y2 + y1 * x2;
+
+    // Extract angle
+    return std::atan2(y_new, x_new);
 }
 
 double subtract_angles(double angle1, double angle2) {
-    double x1 = cos(angle1), y1 = sin(angle1);
-    double x2 = cos(angle2), y2 = sin(angle2);
-    double result_x = x1 - x2;
-    double result_y = y1 - y2;
-    return atan2(result_y, result_x);
+    // Convert angles to unit vectors
+    double x1 = std::cos(angle1), y1 = std::sin(angle1);
+    double x2 = std::cos(angle2), y2 = std::sin(angle2);
+
+    // Compute dot product and cross product
+    double dot_product = x1 * x2 + y1 * y2;  // |v1|*|v2|*cos(θ)
+    double cross_product = x1 * y2 - y1 * x2;  // |v1|*|v2|*sin(θ)
+
+    // Compute angle difference
+    return std::atan2(cross_product, dot_product);
 }
 
 Eigen::Vector4d kinematic_propagate(
@@ -294,11 +326,35 @@ Eigen::Vector4d kinematic_propagate(
         next_x << cur_x[0] + cur_x[2] * cos(sum_angle) * dt,
                   cur_x[1] + cur_x[2] * sin(sum_angle) * dt,
                   cur_x[2] + cur_u[0] * dt,
-                  cur_x[3] + cur_x[2] * cos(beta) * dt / wheelbase;
+                  cur_x[3] + cur_x[2] * tan(cur_u[1]) * cos(beta) * dt / wheelbase;
     }
     // clang-format on
 
     return next_x;
+}
+
+double calculateRadius(
+    double x1, double y1, double theta1,  // 第一点坐标和切线角度
+    double x2, double y2, double theta2)  // 第二点坐标和切线角度
+{
+    // 计算法向量(切线正交方向)
+    double nx1 = sin(theta1);
+    double ny1 = -cos(theta1);
+    double nx2 = sin(theta2);
+    double ny2 = -cos(theta2);
+    
+    // 解方程(使用线性代数求解)
+    double det = nx1*ny2 - nx2*ny1;
+    if (abs(det) < 1e-6) return INFINITY;  // 平行线，无交点
+    
+    double t1 = ((x2-x1)*ny2 - (y2-y1)*nx2) / det;
+    
+    // 计算圆心
+    double xc = x1 + nx1*t1;
+    double yc = y1 + ny1*t1;
+    
+    // 计算半径
+    return sqrt(pow(xc-x1, 2) + pow(yc-y1, 2));
 }
 
 Eigen::Vector2d reverse_kinematic_propagate(
@@ -310,13 +366,16 @@ Eigen::Vector2d reverse_kinematic_propagate(
     double beta = atan(tan(prev_u[1])/2.0);
     Eigen::Vector2d cur_u;
     double diff_angle = subtract_angles(next_x[3], cur_x[3]);
+    double R = calculateRadius(cur_x[0], cur_x[1], cur_x[3], next_x[0], next_x[1], next_x[3]);
     // clang-format off
     if (ref_point == ReferencePoint::RearCenter) {
         cur_u << (next_x[2] - cur_x[2]) / dt,
-                  (diff_angle) * wheelbase / (cur_x[2] * dt);
+                 wheelbase / R ;
+                //   atan((diff_angle) * wheelbase / (cur_x[2] * dt));
     } else {
         cur_u << (next_x[2] - cur_x[2]) / dt,
-                  (diff_angle) * wheelbase / (cur_x[2] * dt * cos(beta));
+                 wheelbase / R / cos(beta);
+                //   atan((diff_angle) * wheelbase / (cur_x[2] * dt * cos(beta)));
     }
     // clang-format on
 

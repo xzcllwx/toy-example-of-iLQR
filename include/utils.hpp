@@ -32,11 +32,15 @@ enum class ReferencePoint { RearCenter, GravityCenter };
 class ReferenceLine {
   public:
     ReferenceLine() = delete;
-    ReferenceLine(std::vector<double> _x, std::vector<double> _y, double width = 0,
-                  double accuracy = 0.1);
+    ReferenceLine(std::vector<double> _x, std::vector<double> _y, double width,
+                  double accuracy);
+    ReferenceLine(std::vector<double> _x, std::vector<double> _y, 
+                    double offset_x, double offset_y,
+                    double width, double accuracy);
     ~ReferenceLine() {}
 
     Eigen::Vector3d calc_position(double cur_s);
+    ReferenceLine offset(double d) const;
 
   public:
     size_t size() const { return x.size(); }

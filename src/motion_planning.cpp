@@ -62,6 +62,7 @@ private:
     std::vector<ReferenceLine> center_lines;
     Eigen::Vector2d road_borders;
     double steer_size;
+    std::string save_path = "/root/xzcllwx_ws/GameFormer-Planner/plan/";
 
     CILQRSolver ilqr_solver;
 
@@ -140,11 +141,11 @@ public:
         reference_x = reference_line[0];
         reference_y = reference_line[1];
         for (double w : border_widths) {
-            ReferenceLine reference(reference_x, reference_y, w);
+            ReferenceLine reference(reference_x, reference_y, w, 1.0);
             borders.emplace_back(reference);
         } // 边缘线
         for (double w : center_line_widths) {
-            ReferenceLine reference(reference_x, reference_y, w);
+            ReferenceLine reference(reference_x, reference_y, w, 1.0);
             center_lines.emplace_back(reference);
         } // 中心线
         std::sort(border_widths.begin(), border_widths.end(), std::greater<double>());
@@ -155,20 +156,69 @@ public:
     std::vector<std::vector<double>> plan(
             std::vector<double> initial_conditions,
             std::vector<std::vector<double>> init_trajectory, 
-            std::vector<std::vector<std::vector<double>>> predictions) {
+            std::vector<std::vector<std::vector<double>>> predictions,
+            double target_vel = 13,
+            int iteration = 0) {
         SPDLOG_INFO("motion_planner plan");
 
-        vehicle_num = predictions.size();
+
         std::vector<RoutingLine> obs_predictions;
         obs_predictions.reserve(predictions.size());
         for (auto& prediction : predictions) {
             obs_predictions.emplace_back(prediction);
         }
+        vehicle_num = obs_predictions.size();
 
-        Eigen::Vector4d ego_state = {initial_conditions[0], initial_conditions[1],
-                                    initial_conditions[2], initial_conditions[3]};
+        Eigen::Vector4d ego_state = {
+                                        initial_conditions[0], 
+                                        initial_conditions[1],
+                                        initial_conditions[2], 
+                                        initial_conditions[3]
+                                    };
 
+        target_velocity = target_vel;
+        // ReferenceLine reference_line(center_lines[0].x, center_lines[0].y, 
+        //                              -initial_conditions[0], -initial_conditions[1],
+        //                              center_lines[0].delta_d, center_lines[0].delta_s);
+        auto [new_u, new_x] =
+            ilqr_solver.solve(ego_state, center_lines[0], target_velocity,
+                              obs_predictions, road_borders, init_trajectory);
+        // new_x.col(0) = new_x.col(0).array() + initial_conditions[0];
+        // new_x.col(1) = new_x.col(1).array() + initial_conditions[1];
         plt::cla();
+        ego_state = new_x.row(1).transpose();
+        // Eigen::MatrixX4d boarder = utils::get_boundary(new_x, VEHICLE_WIDTH * 0.7);
+        // std::vector<std::vector<double>> closed_curve = utils::get_closed_curve(boarder);
+        // plt::fill(closed_curve[0], closed_curve[1], {{"color", "cyan"}, {"alpha", "0.7"}});
+        utils::plot_vehicle(outlook_ego, ego_state, vehicle_para, reference_point, wheelbase);
+        {
+            std::vector<double> traj_x;
+            std::vector<double> traj_y;
+            traj_x.reserve(new_x.rows());
+            traj_y.reserve(new_x.rows());
+            for (int i = 0; i < new_x.rows(); ++i) {
+                traj_x.push_back(new_x(i, 0));  // 矩阵第一列 - x坐标
+                traj_y.push_back(new_x(i, 1));  // 矩阵第二列 - y坐标
+            }
+            plt::scatter(traj_x, traj_y, 50.0, {{"color", "blue"}, {"marker", "o"}});
+
+            std::vector<double> x, y;
+            x.reserve(init_trajectory.size());
+            y.reserve(init_trajectory.size());
+            for (size_t i = 0; i < init_trajectory.size(); ++i) {
+                x.emplace_back(init_trajectory[i][0]);
+                y.emplace_back(init_trajectory[i][1]);
+            }
+            // plt::plot(x, y, "-b");
+            plt::scatter(x, y, 20.0, {{"color", "green"}, {"marker", "^"}});
+        }
+
+        for (size_t idx = 0; idx < obs_predictions.size(); ++idx) {
+            plt::plot(obs_predictions[idx].x, obs_predictions[idx].y, "-r");
+            Eigen::Vector3d obs_state = obs_predictions[idx][0];
+            utils::plot_vehicle(outlook_agent, obs_state, vehicle_para,
+                                reference_point, 0);
+        }
         for (size_t i = 0; i < borders.size(); ++i) {
             if (i == 0 || i == borders.size() - 1) {
                 plt::plot(borders[i].x, borders[i].y, {{"linewidth", "2"}, {"color", "k"}});
@@ -179,37 +229,19 @@ public:
         for (size_t i = 0; i < center_lines.size(); ++i) {
             plt::plot(center_lines[i].x, center_lines[i].y, "--k");
         }
-
-        auto [new_u, new_x] =
-            ilqr_solver.solve(ego_state, center_lines[0], target_velocity,
-                              obs_predictions, road_borders, init_trajectory);
-
-        ego_state = new_x.row(1).transpose();
-
-        Eigen::MatrixX4d boarder = utils::get_boundary(new_x, VEHICLE_WIDTH * 0.7);
-        std::vector<std::vector<double>> closed_curve = utils::get_closed_curve(boarder);
-        plt::fill(closed_curve[0], closed_curve[1], {{"color", "cyan"}, {"alpha", "0.7"}});
-
-        utils::plot_vehicle(outlook_ego, ego_state, vehicle_para, reference_point, wheelbase);
-        for (size_t idx = 1; idx < vehicle_num; ++idx) {
-            utils::plot_vehicle(outlook_agent, obs_predictions[idx][0], vehicle_para,
-                                reference_point, 0);
-        }
-
         if (show_obstacle_boundary) {
             Eigen::Matrix3Xd cur_obstacle_states =
                 utils::get_cur_obstacle_states(obs_predictions, 0);
             utils::plot_obstacle_boundary(ego_state, cur_obstacle_states, obs_attr, wheelbase,
                                         reference_point);
         }
-
-        if (show_reference_line) {
-            plt::plot(center_lines[0].x, center_lines[0].y, "-r");
-        }
+        // if (show_reference_line) {
+        //     plt::plot(center_lines[0].x, center_lines[0].y, "-r");
+        // }
 
         // defualt figure x-y limit
-        double visual_x_min = ego_state.x() - 20;
-        double visual_y_min = ego_state.y() - 10;
+        double visual_x_min = ego_state.x() - 50;
+        double visual_y_min = ego_state.y() - 30;
         double visual_x_max = ego_state.x() + 50;
         double visual_y_max = ego_state.y() + 30;
         // if (hypot(visual_x_limit[0], visual_x_limit[1]) > 1e-3) {
@@ -249,17 +281,24 @@ public:
                 {{"color", "black"}});
         plt::text(text_left, text_top - 4.5, fmt::format("yaw = {:.2f} rad", ego_state.w()),
                 {{"color", "black"}});
-        plt::text(text_left + 10, text_top, fmt::format("acc = {:.2f}", new_u.row(0)[0]),
+        plt::text(text_left + 20, text_top, fmt::format("acc = {:.2f}", new_u.row(0)[0]),
                 {{"color", "black"}});
-        plt::text(text_left + 10, text_top - 1.5, fmt::format("steer = {:.2f}", new_u.row(0)[1]),
+        plt::text(text_left + 20, text_top - 1.5, fmt::format("steer = {:.2f}", new_u.row(0)[1]),
                 {{"color", "black"}});
 
         plt::xlim(visual_x_min, visual_x_max);
         plt::ylim(visual_y_min, visual_y_max);
-        plt::pause(delta_t);
+       
+        if (!save_path.empty()) {
+            // SPDLOG_INFO("save_path: {}", save_path);
+            std::ostringstream oss;
+            oss << save_path << iteration << ".png";
+            plt::save(oss.str());
+        }
+        // plt::pause(delta_t);
 
         // config->destroy_instance();
-        plt::show();
+        // plt::show();
         int N = init_trajectory.size();
         std::vector<std::vector<double>> result(N, std::vector<double>(4, 0));
         for (int i=0; i<N; i++) {
@@ -286,6 +325,8 @@ PYBIND11_MODULE(motion_planning, m)
              py::arg("initial_conditions"), 
              py::arg("init_trajectory"), 
              py::arg("predictions"),
+             py::arg("target_vel"), 
+             py::arg("iteration"),
              py::return_value_policy::copy);
 }
 

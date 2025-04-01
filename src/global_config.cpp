@@ -30,6 +30,7 @@ void GlobalConfig::load_file(const std::string& filePath) {
         config_map["lqr/w_yaw"] = config["lqr"]["w_yaw"].as<double>();
         config_map["lqr/w_acc"] = config["lqr"]["w_acc"].as<double>();
         config_map["lqr/w_stl"] = config["lqr"]["w_stl"].as<double>();
+        config_map["lqr/w_jerk"] = config["lqr"]["w_jerk"].as<double>();
         config_map["lqr/slove_type"] = config["lqr"]["slove_type"].as<std::string>();
         config_map["lqr/alm_rho_init"] = config["lqr"]["alm_rho_init"].as<double>(1.0);
         config_map["lqr/alm_gamma"] = config["lqr"]["alm_gamma"].as<double>(0.0);
