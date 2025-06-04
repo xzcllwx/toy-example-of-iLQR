@@ -3,13 +3,14 @@ build
 
 build/
 
-spdlog/
+# spdlog/
+spdlog/*
 
-fmt/
+fmt/*
 
-pybind11/
+pybind11/*
 
-yaml/
+yaml/*
 
 CMakeFiles/
 
