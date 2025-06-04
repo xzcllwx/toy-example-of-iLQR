@@ -17,6 +17,9 @@ This repository implements an **C**onstrained **I**terative **L**inear **Q**uadr
 - Tested on WSL2 Ubuntu 20.04🐧
 - Python >= 3.6.10, matplotlib, numpy
 - Other dependencies: [fmt](https://github.com/fmtlib/fmt), [yamp-cpp](https://github.com/jbeder/yaml-cpp), [spdlog](https://github.com/gabime/spdlog)
+- pybind master/v2.13
+- fmt master/v11.1.3
+- spdlog master/v1.x/v1.15.1
 
 ## 2. Build
 
