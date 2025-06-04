@@ -37,11 +37,11 @@ iteration:
 vehicle:
   # reference_point: "gravity_center" # rear_center or gravity_center
   reference_point: "gravity_center" # rear_center or gravity_center
-  target_velocity: 10.0
-  wheelbase: 3.089
-  width: 2.297
-  length: 5.176
-  velo_max: 13.0
+  target_velocity: 5.0
+  wheelbase: 2.65
+  width: 1.9
+  length: 4.5
+  velo_max: 9.0
   velo_min: 0.0
   yaw_lim: 1.57
   acc_max: 2.0
@@ -53,7 +53,7 @@ laneline:
   reference:
     x: [-10, 0, 50, 100, 150, 200]
     y: [0, 0, 0, 0, 0, 0]
-  border: [-1.8, 1.8]
+  border: [-1.5, 1.5]
   center_line: [0]
 
 initial_condition:
